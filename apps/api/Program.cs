@@ -2,6 +2,7 @@ using Backend.Core.Auth;
 using Backend.Data;
 using Backend.Infrastructure.Auth;
 using Backend.Infrastructure.Storage;
+using Backend.Pdf;
 using DigitalLogbook.Api.Endpoints;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 var storageRoot = StoragePaths.GetStorageRoot(builder.Environment.ContentRootPath);
 Directory.CreateDirectory(storageRoot);
 Directory.CreateDirectory(StoragePaths.GetTemplatesDir(builder.Environment.ContentRootPath));
+Directory.CreateDirectory(StoragePaths.GetImagesRoot(builder.Environment.ContentRootPath));
+Directory.CreateDirectory(StoragePaths.GetExportsRoot(builder.Environment.ContentRootPath));
 
 // Create an absolute db path under the repo-root storage folder
 var dbPath = Path.Combine(storageRoot, "app.db");
@@ -21,6 +24,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Current user stub
 builder.Services.AddScoped<ICurrentUserService, StubCurrentUserService>();
+
+// PDF exporter
+builder.Services.AddScoped<IPdfExporter, PdfExporter>();
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle

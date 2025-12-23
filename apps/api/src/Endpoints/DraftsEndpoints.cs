@@ -4,6 +4,7 @@ using System.Text.Json;
 using Backend.Core.Auth;
 using Backend.Core.DTOs;
 using Backend.Data;
+using Backend.Pdf;
 using Microsoft.EntityFrameworkCore;
 
 namespace DigitalLogbook.Api.Endpoints;
@@ -100,7 +101,7 @@ public static class DraftsEndpoints
 		endpoints.MapGet("/api/drafts/{id:guid}", async (Guid id, ICurrentUserService currentUser, AppDbContext db) =>
 		{
 			var userId = currentUser.GetUserId();
-			var draft = await db.PdfDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+			var draft = await db.PdfDrafts.AsNoTracking().Include(d => d.Template).FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
 			if (draft is null) return Results.NotFound();
 
 			JsonElement formData;
@@ -145,6 +146,67 @@ public static class DraftsEndpoints
 		.Produces(StatusCodes.Status200OK)
 		.Produces(StatusCodes.Status404NotFound);
 
-		return endpoints;
-	}
+        // POST /api/drafts/{id}/export
+        endpoints.MapPost("/api/drafts/{id:guid}/export", async (Guid id, ICurrentUserService currentUser, AppDbContext db, IPdfExporter exporter, IHostEnvironment env) =>
+        {
+            var userId = currentUser.GetUserId();
+            var draft = await db.PdfDrafts.AsNoTracking()
+                .Include(d => d.Template)
+                .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            
+            if (draft is null) return Results.NotFound(new { error = "Draft not found." });
+            if (draft.Template is null) return Results.BadRequest(new { error = "Template not found." });
+
+            try
+            {
+                var formData = System.Text.Json.JsonDocument.Parse(draft.FormDataJson);
+                var exportPath = await exporter.ExportDraftAsync(
+                    draft.Template.StoredPath,
+                    draft.Id.ToString(),
+                    userId,
+                    formData,
+                    draft.DrawingImagePath,
+                    env.ContentRootPath
+                );
+
+                var dto = new Backend.Core.DTOs.ExportDraftDto(draft.Id, exportPath);
+                return Results.Ok(dto);
+            }
+            catch (FileNotFoundException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = $"Export failed: {ex.Message}" });
+            }
+        })
+        .WithName("ExportDraft")
+        .Produces<Backend.Core.DTOs.ExportDraftDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // GET /api/drafts/{id}/export/file
+        endpoints.MapGet("/api/drafts/{id:guid}/export/file", async (Guid id, ICurrentUserService currentUser, AppDbContext db, IHostEnvironment env) =>
+        {
+            var userId = currentUser.GetUserId();
+            var draft = await db.PdfDrafts.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId);
+            if (draft is null) return Results.NotFound();
+
+            var exportsDir = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "storage", "exports", userId));
+            var exportPath = Path.Combine(exportsDir, $"{id}.pdf");
+
+            if (!File.Exists(exportPath))
+                return Results.NotFound(new { error = "Export file not found. Please export first." });
+
+            // Read file as bytes to avoid holding open file handles (Windows file lock issue)
+            var fileBytes = File.ReadAllBytes(exportPath);
+            return Results.File(fileBytes, "application/pdf", fileDownloadName: $"{id}.pdf");
+        })
+        .WithName("GetDraftExportFile")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound);
+
+        return endpoints;
+    }
 }

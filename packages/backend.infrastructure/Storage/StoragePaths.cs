@@ -26,4 +26,14 @@ public static class StoragePaths
 	{
 		return Path.Combine(GetImagesRoot(contentRootPath), userId);
 	}
+
+	public static string GetExportsRoot(string contentRootPath)
+	{
+		return Path.Combine(GetStorageRoot(contentRootPath), "exports");
+	}
+
+	public static string GetUserExportsDir(string contentRootPath, string userId)
+	{
+		return Path.Combine(GetExportsRoot(contentRootPath), userId);
+	}
 }

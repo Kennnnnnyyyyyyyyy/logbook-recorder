@@ -92,22 +92,28 @@ public static class TemplatesEndpoints
 		.WithName("ListTemplates")
 		.Produces<List<TemplateDto>>(StatusCodes.Status200OK);
 
-		// GET /api/templates/{id}/file - stream PDF
-		endpoints.MapGet("/api/templates/{id:guid}/file", async (Guid id, AppDbContext db) =>
-		{
-			var tpl = await db.PdfTemplates.FirstOrDefaultAsync(t => t.Id == id);
-			if (tpl is null)
-				return Results.NotFound(new { error = "Template not found." });
+		// GET /api/templates/{id}/file - stream PDF (inline + range)
+endpoints.MapGet("/api/templates/{id:guid}/file", async (Guid id, AppDbContext db, HttpContext ctx) =>
+{
+    var tpl = await db.PdfTemplates.FirstOrDefaultAsync(t => t.Id == id);
+    if (tpl is null)
+        return Results.NotFound(new { error = "Template not found." });
 
-			if (string.IsNullOrWhiteSpace(tpl.StoredPath) || !File.Exists(tpl.StoredPath))
-				return Results.NotFound(new { error = "Template file missing on disk." });
+    if (string.IsNullOrWhiteSpace(tpl.StoredPath) || !File.Exists(tpl.StoredPath))
+        return Results.NotFound(new { error = "Template file missing on disk." });
 
-			var stream = new FileStream(tpl.StoredPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-			return Results.File(stream, "application/pdf", fileDownloadName: tpl.OriginalFileName);
-		})
-		.WithName("GetTemplateFile")
-		.Produces(StatusCodes.Status200OK)
-		.Produces(StatusCodes.Status404NotFound);
+    var stream = new FileStream(tpl.StoredPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+    // Force inline preview (NOT attachment download)
+    ctx.Response.Headers["Content-Disposition"] =
+        $"inline; filename=\"{tpl.OriginalFileName}\"";
+
+    // Enable range requests (helps browser PDF viewer)
+    return Results.File(stream, "application/pdf", enableRangeProcessing: true);
+})
+.WithName("GetTemplateFile")
+.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound);
 
 		return endpoints;
 	}

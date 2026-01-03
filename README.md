@@ -1,6 +1,6 @@
 <!-- Purpose: Project overview and setup instructions. -->
 
-# DigitalLogbook
+# Digital Logbook
 
 A PDF document logbook system for capturing form data, drawings, and generating flattened PDFs.
 
